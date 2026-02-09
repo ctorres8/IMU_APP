@@ -5,146 +5,221 @@
  *      Author: Cristian
  */
 
+#include <imu.h>
 #include <stdio.h>
 #include <stdint.h>
-#include "ICM20602.h"
-#include "main.h"
+#include "EKF.h"
 #include "data_handler.h"
+#include "main.h"
+#include <string.h>
 
-extern UART_HandleTypeDef huart3;
+#define VERSION_FW "v1.0.0"
+#define SCALE_ACC 2//g
+#define SCALE_GYRO 250//dps
+#define SCALE_MAG 2400//uT
 
-IMUData_t imu_data_tx;
-char buffer_rx[10];
 
-extern float Ax_raw,Ay_raw,Az_raw;
-extern float Gx_raw,Gy_raw,Gz_raw;
-extern float Mx_raw,My_raw,Mz_raw;
+IMU_Send_Packet_t imu_tx_packets;
 
-extern double bias_ax,bias_ay,bias_az;
-extern double bias_gx,bias_gy,bias_gz;
-extern double bias_mx,bias_my,bias_mz;
+extern IMU_Values_t IMU;
 
-float Ax_f=0, Ay_f=0, Az_f=0;
-float Gx_f=0, Gy_f=0, Gz_f=0;
-float Mx_f=0, My_f=0, Mz_f=0;
 
-float Ax_est=0, Ay_est=0, Az_est=0;
-float Gx_est=0, Gy_est=0, Gz_est=0;
-float Mx_est=0, My_est=0, Mz_est=0;
-
-void FilterValues(void)
-{
-	//Obtengo los valores filtrados
-	Ax_f=Ax_raw-bias_ax;
-	Ay_f=Ay_raw-bias_ay;
-	Az_f=Az_raw-bias_az;
-
-	Gx_f=Gx_raw-bias_gx;
-	Gy_f=Gy_raw-bias_gy;
-	Gz_f=Gz_raw-bias_gz;
-
-	Mx_f=Mx_raw-bias_mx;
-	My_f=My_raw-bias_my;
-	Mz_f=Mz_raw-bias_mz;
-
-	printf("\n::FILTRO:: Valores filtrados. \n");
-
-}
 
 void EstimateValues (void)
 {
+	/*
+	@brief: Realiza la estimación de los valores
+
+	 */
+
 	static uint32_t i=0;
 
-	//estimacion
+	IMU.Ax_est= IMU.Ax_est*i/(i+1) + IMU.Ax/(i+1);
+	IMU.Ay_est= IMU.Ay_est*i/(i+1) + IMU.Ay/(i+1);
+	IMU.Az_est= IMU.Az_est*i/(i+1) + IMU.Az/(i+1);
 
-	Ax_est= Ax_est*i/(i+1) + Ax_f/(i+1);
-	Ay_est= Ay_est*i/(i+1) + Ay_f/(i+1);
-	Az_est= Az_est*i/(i+1) + Az_f/(i+1);
+	IMU.Gx_est= IMU.Gx_est*i/(i+1) + IMU.Gx/(i+1);
+	IMU.Gy_est= IMU.Gy_est*i/(i+1) + IMU.Gy/(i+1);
+	IMU.Gz_est= IMU.Gz_est*i/(i+1) + IMU.Gz/(i+1);
 
-	Gx_est= Gx_est*i/(i+1) + Gx_f/(i+1);
-	Gy_est= Gy_est*i/(i+1) + Gy_f/(i+1);
-	Gz_est= Gz_est*i/(i+1) + Gz_f/(i+1);
-
-	Mx_est= Mx_est*i/(i+1) + Mx_f/(i+1);
-	My_est= My_est*i/(i+1) + My_f/(i+1);
-	Mz_est= Mz_est*i/(i+1) + Mz_f/(i+1);
+	IMU.Mx_est= IMU.Mx_est*i/(i+1) + IMU.Mx/(i+1);
+	IMU.My_est= IMU.My_est*i/(i+1) + IMU.My/(i+1);
+	IMU.Mz_est= IMU.Mz_est*i/(i+1) + IMU.Mz/(i+1);
 
 	i++;
 
-	printf("\n::ESTIMADOR:: Valores estimados. \n");
+	//printf("\n::ESTIMADOR:: Valores estimados. \n");
 }
 
-void ShowRAWValues(void)
-{
-	printf("\n**VALORES RAW**\n");
-	printf("Ax: %.4f , Ay: %.4f , Az: %.4f\n",Ax_raw,Ay_raw,Az_raw);
-	printf("Gx: %.4f , Gy: %.4f , Gz: %.4f\n",Gx_raw,Gy_raw,Gz_raw);
-	printf("Mx: %.4f , My: %.4f , Mz: %.4f\n\n",Mx_raw,My_raw,Mz_raw);
-}
 
-void ShowFilteredValues(void)
+void ShowMeasures(void)
 {
-	printf("\n**VALORES FILTRADOS**\n");
-	printf("Ax: %.4f , Ay: %.4f , Az: %.4f\n",Ax_f,Ay_f,Az_f);
-	printf("Gx: %.4f , Gy: %.4f , Gz: %.4f\n",Gx_f,Gy_f,Gz_f);
-	printf("Mx: %.4f , My: %.4f , Mz: %.4f\n\n",Mx_f,My_f,Mz_f);
+	/*
+	@brief: Muestra los valores filtrados por consola.
+	 */
+
+	printf("\n**MEDICIONES**\n");
+	printf("Ax: %.4f , Ay: %.4f , Az: %.4f\n",IMU.Ax,IMU.Ay,IMU.Az);
+	printf("Gx: %.4f , Gy: %.4f , Gz: %.4f\n",IMU.Gx,IMU.Gy,IMU.Gz);
+	printf("Mx: %.4f , My: %.4f , Mz: %.4f\n\n",IMU.Mx,IMU.My,IMU.Mz);
 }
 
 void ShowEstimatedValues(void)
 {
+	/*
+	@brief: Muestra los valores estimados por consola.
+	 */
+
 	printf("\n**VALORES ESTIMADOS**\n");
-	printf("Ax(est): %.4f , Ay(est): %.4f , Az(est): %.4f\n",Ax_est,Ay_est,Az_est);
-	printf("Gx(est): %.4f , Gy(est): %.4f , Gz(est): %.4f\n",Gx_est,Gy_est,Gz_est);
-	printf("Mx(est): %.4f , My(est): %.4f , Mz(est): %.4f\n\n",Mx_est,My_est,Mz_est);
+	printf("Ax(est): %.4f , Ay(est): %.4f , Az(est): %.4f\n",IMU.Ax_est,IMU.Ay_est,IMU.Az_est);
+	printf("Gx(est): %.4f , Gy(est): %.4f , Gz(est): %.4f\n",IMU.Gx_est,IMU.Gy_est,IMU.Gz_est);
+	printf("Mx(est): %.4f , My(est): %.4f , Mz(est): %.4f\n\n",IMU.Mx_est,IMU.My_est,IMU.Mz_est);
 }
 
-void LoadDataPacket(void)
+void LoadTelemetricData(void)
 {
-	imu_data_tx.start = 0xAA;
+	/*
+	 @brief: Se cargan los valores medidos y estimados al buffer telemétrico para ser enviado por puerto serie
+	 	 	 Consiste en:
+	 	 	 * 1 byte de start,
+	 	 	 * 1 byte de tipo de trama,
+	 	 	 * 24 floats de datos,
+	 	 	 * 1 byte de checksum
+	 */
 
-	imu_data_tx.Ax_f = Ax_f;
-	imu_data_tx.Ay_f = Ay_f;
-	imu_data_tx.Az_f = Az_f;
+	IMU_Send_Packet_t *imu_tx = &imu_tx_packets;
 
-	imu_data_tx.Gx_f = Gx_f;
-	imu_data_tx.Gy_f = Gy_f;
-	imu_data_tx.Gz_f = Gz_f;
+	imu_tx->telemetric_packet.start = 0xAA;
 
-	imu_data_tx.Mx_f = Mx_f;
-	imu_data_tx.My_f = My_f;
-	imu_data_tx.Mz_f = Mz_f;
+	imu_tx->telemetric_packet.type_frame = 0x01; // PARA MEDICIONES
 
-	imu_data_tx.Ax_est = Ax_est;
-	imu_data_tx.Ay_est = Ay_est;
-	imu_data_tx.Az_est = Az_est;
+	imu_tx->telemetric_packet.Ax_f = IMU.Ax;
+	imu_tx->telemetric_packet.Ay_f = IMU.Ay;
+	imu_tx->telemetric_packet.Az_f = IMU.Az;
 
-	imu_data_tx.Gx_est = Gx_est;
-	imu_data_tx.Gy_est = Gy_est;
-	imu_data_tx.Gz_est = Gz_est;
+	imu_tx->telemetric_packet.Gx_f = IMU.Gx;
+	imu_tx->telemetric_packet.Gy_f = IMU.Gy;
+	imu_tx->telemetric_packet.Gz_f = IMU.Gz;
 
-	imu_data_tx.Mx_est = Mx_est;
-	imu_data_tx.My_est = My_est;
-	imu_data_tx.Mz_est = Mz_est;
+	imu_tx->telemetric_packet.Mx_f = IMU.Mx;
+	imu_tx->telemetric_packet.My_f = IMU.My;
+	imu_tx->telemetric_packet.Mz_f = IMU.Mz;
 
-	imu_data_tx.checksum = 0x00;
+	imu_tx->telemetric_packet.Roll = IMU.Roll;
+	imu_tx->telemetric_packet.Pitch = IMU.Pitch;
+	imu_tx->telemetric_packet.Yaw = IMU.Yaw;
+
+
+	imu_tx->telemetric_packet.Ax_est = IMU.Ax_est;
+	imu_tx->telemetric_packet.Ay_est = IMU.Ay_est;
+	imu_tx->telemetric_packet.Az_est = IMU.Az_est;
+
+	imu_tx->telemetric_packet.Gx_est = IMU.Gx_est;
+	imu_tx->telemetric_packet.Gy_est = IMU.Gy_est;
+	imu_tx->telemetric_packet.Gz_est = IMU.Gz_est;
+
+	imu_tx->telemetric_packet.Mx_est = IMU.Mx_est;
+	imu_tx->telemetric_packet.My_est = IMU.My_est;
+	imu_tx->telemetric_packet.Mz_est = IMU.Mz_est;
+
+	imu_tx->telemetric_packet.Roll_est = IMU.Roll_est;
+	imu_tx->telemetric_packet.Pitch_est = IMU.Pitch_est;
+	imu_tx->telemetric_packet.Yaw_est = IMU.Yaw_est;
+
+	imu_tx->telemetric_packet.checksum = 0x00;
 }
 
-uint8_t sendPacket(void)
+void LoadInfoData(void)
 {
-	uint8_t msg=0;
-	msg=HAL_UART_Transmit(&huart3, (uint8_t *) &imu_data_tx, sizeof(imu_data_tx), HAL_MAX_DELAY);
-	return msg;
+	/*
+	 @brief: Carga los valores de información al buffer de INFO para ser enviado por puerto serie.
+	  		 Consiste en:
+	 	 	 *	1 byte de start,
+	 	 	 *	1 byte de tipo de trama,
+	 	 	 *	1 int de velocidad,
+	 	 	 *	1 string de escala,
+	 	 	 *	1 string de version,
+	 	 	 *	1 string de modelo de imu,
+	 	 	 *	1 byte checksum
+	 */
+
+	IMU_Send_Packet_t *imu_tx = &imu_tx_packets;
+
+	imu_tx->info_packet.start = 0xAA;
+	imu_tx->info_packet.type_frame = 0x02; // PARA STATUS
+	imu_tx->info_packet.velocidad= 115200;
+	sprintf(imu_tx->info_packet.escala,"%d g/%d dps/%d uT",SCALE_ACC,SCALE_GYRO,SCALE_MAG);
+	sprintf(imu_tx->info_packet.version,"%s",VERSION_FW);
+
+	if(IMU.wia==WHOAMI_MPU6050_LOW || IMU.wia==WHOAMI_MPU6050_HIGH)
+	{
+		sprintf(imu_tx->info_packet.imu_model,"MPU6050");
+	}
+	else if(IMU.wia==WHOAMI_MPU9250_LOW || IMU.wia==WHOAMI_MPU9250_HIGH)
+	{
+		sprintf(imu_tx->info_packet.imu_model,"MPU9250");
+	}
+	else
+	{
+		sprintf(imu_tx->info_packet.imu_model,"DESCONOCIDO");
+	}
+	imu_tx->info_packet.checksum = 0x00;
 }
 
-uint8_t receivePacket(void)
+void LoadCalibData(uint8_t percent)
 {
-	uint8_t msg=0;
+	/*
+	 @brief: Carga los valores de porcentaje de calibración al buffer CALIB  para ser enviado por puerto serie.
+	 	 	 Consiste en:
+	 	 	 * 1 byte de start
+	 	 	 * 1 byte de tipo de trama
+	 	 	 * 1 byte de porcentaje
+	 	 	 * 1 byte de checksum
+	 */
 
-	msg=HAL_UART_Receive(&huart3, (uint8_t *) buffer_rx, sizeof(buffer_rx), HAL_MAX_DELAY);
+	IMU_Send_Packet_t *imu_tx = &imu_tx_packets;
 
-	//HAL_UART_RxCpltCallback(&huart3);
+	imu_tx->calib_packet.start = 0xAA;
+	imu_tx->calib_packet.type_frame = 0x03; // PARA CALIB
+	imu_tx->calib_packet.percent = percent;
+	imu_tx->calib_packet.checksum = 0x00;
+}
 
-	//HAL_UART_Receive_IT(huart, pData, Size);
+char* getDeviceID (void)
+{
+	/*
+	 @brief: Devuelve el tipo de placa conectada.
 
-	return msg;
+	 @return: El tipo de placa STM32 en la cual se está trabajando.
+	 */
+
+	uint32_t uid = HAL_GetDEVID();
+
+	if(uid==0x413)
+	{
+		return "STM32F405xx/F07xx/F15xx/F17xx";
+	}
+
+	if(uid==0x419)
+	{
+		return "STM32F42xxx/F43xxx";
+	}
+
+	if(uid==0x421)
+	{
+		return "STM32F7xx";
+	}
+
+	if(uid==0x423)
+	{
+		return "STM32F401xB/C";
+	}
+
+	if(uid==0x433)
+	{
+		return "STM32F401xD/E";
+	}
+
+	return "UNKNOW DEVICE";
+
 }

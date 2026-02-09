@@ -4,12 +4,6 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGroupBox, QGridLayo
 class MeasurementsWidget(QWidget):
     def __init__(self):
         super().__init__()
-        self.cant_med = 0
-        self.estimados={
-            "Ax_est":0,"Ay_est":0,"Az_est":0,
-            "Gx_est":0,"Gy_est":0,"Gz_est":0,
-            "Mx_est":0,"My_est":0,"Mz_est":0
-        }
         self.init_widget()
     
     def init_widget(self):
@@ -75,7 +69,28 @@ class MeasurementsWidget(QWidget):
         mag_layout.addWidget(self.label_mz_est,2,1)
         mag_group.setLayout(mag_layout)
 
+        # Grupo mediciones de los ángulos de Euler
+        euler_group = QGroupBox("Ángulos de Euler")
+        euler_layout = QGridLayout()
 
+        self.label_roll = QLabel("Roll(med): --")
+        self.label_pitch = QLabel("Pitch(med): --")
+        self.label_yaw = QLabel("Yaw(med): --")
+
+        self.label_roll_est = QLabel("Roll(est): --")
+        self.label_pitch_est = QLabel("Pitch(est): --")
+        self.label_yaw_est = QLabel("Yaw(est): --")
+
+        euler_layout.addWidget(self.label_roll,0,0)
+        euler_layout.addWidget(self.label_roll_est,0,1)
+        euler_layout.addWidget(self.label_pitch,1,0)
+        euler_layout.addWidget(self.label_pitch_est,1,1)
+        euler_layout.addWidget(self.label_yaw,2,0)
+        euler_layout.addWidget(self.label_yaw_est,2,1)
+        euler_group.setLayout(euler_layout)
+
+
+        main_layout.addWidget(euler_group)
         main_layout.addWidget(accel_group)
         main_layout.addWidget(gyro_group)
         main_layout.addWidget(mag_group)
@@ -85,6 +100,8 @@ class MeasurementsWidget(QWidget):
     def update_sensor_data(self,imu_values=dict):
         """
         Actualiza los valores de los sensores en la UI con los datos del sensor
+
+        @param imu_values: diccionario que contiene los valores que se reciben por el puerto serie
         """
         self.label_ax.setText(f"Ax(med): {imu_values.get('Ax')} [g]")
         self.label_ay.setText(f"Ay(med): {imu_values.get('Ay')} [g]")
@@ -95,10 +112,15 @@ class MeasurementsWidget(QWidget):
         self.label_mx.setText(f"Mx(med): {imu_values.get('Mx')} [uT]")
         self.label_my.setText(f"My(med): {imu_values.get('My')} [uT]")
         self.label_mz.setText(f"Mz(med): {imu_values.get('Mz')} [uT]")
+        self.label_roll.setText(f"Roll(med): {imu_values.get('Roll')} [°]")
+        self.label_pitch.setText(f"Pitch(med): {imu_values.get('Pitch')} [°]")
+        self.label_yaw.setText(f"Yaw(med): {imu_values.get('Yaw')} [°]")
 
     def update_estimates(self,imu_values=dict):
         """
-        @brief: Estimador de la medición
+        Actualiza los estimados de la medición
+
+        @param imu_values: diccionario que contiene los valores que se reciben por el puerto serie
         """
 
         self.label_ax_est.setText(f"Ax(est): {imu_values.get('Ax_est')} [g]")
@@ -110,6 +132,9 @@ class MeasurementsWidget(QWidget):
         self.label_mx_est.setText(f"Mx(est): {imu_values.get('Mx_est')} [uT]")
         self.label_my_est.setText(f"My(est): {imu_values.get('My_est')} [uT]")
         self.label_mz_est.setText(f"Mz(est): {imu_values.get('Mz_est')} [uT]")
+        self.label_roll_est.setText(f"Roll(est): {imu_values.get('Roll_est')} [°]")
+        self.label_pitch_est.setText(f"Pitch(est): {imu_values.get('Pitch_est')} [°]")
+        self.label_yaw_est.setText(f"Yaw(est): {imu_values.get('Yaw_est')} [°]")
 
 
 

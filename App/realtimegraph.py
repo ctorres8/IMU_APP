@@ -1,33 +1,9 @@
 import pyqtgraph as pg
 from collections import deque
 
-MAX_LEN_DEQUE = 200
+MAX_LEN_DEQUE = 100
 CURVE_COLORS = ['b','r','g','y','c','m']
 
-class RealTimeGraph(pg.PlotWidget):
-    """
-    @brief: Widget reutilizable para un gráfico en tiempo real.
-    """
-    def __init__(self,title,label_y):
-        super().__init__()
-        self.setBackground('w')
-        self.setWindowTitle(title)
-        self.setLabel('bottom','Tiempo [s]')
-        self.setLabel('left',label_y)
-        self.addLegend()
-
-        self.x_data=deque(maxlen=200)
-        self.y_data=deque(maxlen=200)
-        self.curve = self.plot(self.x_data, self.y_data, name=title, pen=pg.mkPen(color='b', width=2))
-    
-    def update_graph(self,x_value,y_value):
-        """
-        @brief: Añade un nuevo punto de datos y actualiza el gráfico
-        """
-
-        self.x_data.append(x_value)
-        self.y_data.append(y_value)
-        self.curve.setData(self.x_data,self.y_data)
 
 
 class RealTimeMultiGraph(pg.PlotWidget):
@@ -48,6 +24,8 @@ class RealTimeMultiGraph(pg.PlotWidget):
         self.x_data = deque(maxlen=MAX_LEN_DEQUE)
         self.y_data = {}
         self.curves = {}
+
+        self.start_time_offset = None
         self.init_graph()
 
         if not self.x_data:
@@ -56,6 +34,10 @@ class RealTimeMultiGraph(pg.PlotWidget):
 
     
     def init_graph(self):
+        """
+        Inicializa el gráfico y sus parámetros.
+        
+        """
         for i,name in enumerate(self.curve_names):
             # Selección de color dentro de la paleta de colores
             color_index = i % len(CURVE_COLORS)
@@ -79,11 +61,43 @@ class RealTimeMultiGraph(pg.PlotWidget):
                 self.x_data.append(0)
                 self.y_data[name].append(0)
 
+
+    def reset_graph(self):
+        """
+        Limpia los datos y reinicia el contador de tiempo.
+        """
+        self.start_time_offset = None
+        self.x_data.clear()
+        for key in self.y_data:
+            self.y_data[key].clear()
+            self.curves[key].setData([], [])
+
     def update_graph(self,x_value,y_value=dict):
         """
-        @brief: actualiza el gráfico
+        Actualiza los gráficos
         """
+        if self.start_time_offset is None: 
+            self.start_time_offset = x_value # Establece el tiempo de ref en el primer dato recibido tras conectar
 
+        normalized_time  = x_value - self.start_time_offset
+
+        if not self.x_data or self.x_data[-1] != normalized_time: # evitar duplicados en el eje X (tiempo)
+            self.x_data.append(normalized_time)
+
+            for name, curve in self.curves.items(): # Itero con los gráficos que quiero actualizar
+                val = y_value.get(name)
+                
+                if val is not None: # pregunto si el nuevo valor no es nulo
+                    self.y_data[name].append(val) #agregar el nuevo valor a su conjunto de datos
+                else:
+                    # Si falta el valor, entonces mantener el último conocido
+                    prev_val = self.y_data[name][-1] if self.y_data[name] else 0
+                    self.y_data[name].append(prev_val)
+
+                # Actualizar la curva visualmente
+                curve.setData(list(self.x_data), list(self.y_data[name]))
+
+        """
         # Condición primaria de agregar un dato (si está dentro del rango máx del deque)
         # o si quiero desplazar la ventana.
         if len(self.x_data) < MAX_LEN_DEQUE or self.x_data[-1] != x_value:
@@ -104,6 +118,7 @@ class RealTimeMultiGraph(pg.PlotWidget):
                     self.y_data[name].append(self.y_data[name][-1])
                 else:
                     self.y_data[name].append(0)
-
+        
             #Actualizo la curva con los valos de x e y
             curve.setData(list(self.x_data),list(self.y_data[name]))
+        """
